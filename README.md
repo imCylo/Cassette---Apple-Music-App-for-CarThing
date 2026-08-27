@@ -33,8 +33,10 @@ driving: large targets, big type, and no control small enough to need aiming.
 
 ## Install
 
-Grab a `Cassette-x.y.z.zip` from [Releases](../../releases) and install it from
-the BridgeThing companion app on your phone. No cable, no build step.
+Grab a `Cassette-x.y.z.zip` from
+[Releases](https://github.com/imCylo/Cassette---Apple-Music-App-for-CarThing/releases)
+and install it from the BridgeThing companion app on your phone. No cable, no
+build step.
 
 ## Build it yourself
 
@@ -100,7 +102,8 @@ building this, with source references. Short version:
 
 Corrections very welcome — several of these are inferences from reading the
 BridgeThing source rather than confirmed behaviour, and they were all observed
-on one iPhone against one account.
+on one iPhone against one account. Open an issue if your device behaves
+differently; that is more useful to me than a thank-you.
 
 ## Licence
 

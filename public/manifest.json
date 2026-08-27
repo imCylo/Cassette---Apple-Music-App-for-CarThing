@@ -1,0 +1,17 @@
+{
+  "id": "01a03aee-7989-76c4-b62c-edc89c2cee53",
+  "name": "Cassette",
+  "version": "0.8.0",
+  "description": "Apple Music player with synced lyrics, playlist browsing and four radio presets",
+  "settings": "settings.html",
+  "config": [],
+  "permissions": [
+    "net.fetch"
+  ],
+  "art": {
+    "heroPx": 400,
+    "thumbPx": 128
+  },
+  "role": "standard",
+  "icon": "icon.svg"
+}

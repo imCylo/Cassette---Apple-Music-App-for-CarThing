@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Cassette">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b2f38"/>
+      <stop offset="1" stop-color="#14161a"/>
+    </linearGradient>
+    <linearGradient id="tape" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0a02c"/>
+      <stop offset="1" stop-color="#d2705a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#body)"/>
+
+  <!-- label panel -->
+  <rect x="72" y="112" width="368" height="288" rx="28" fill="#0e1013"/>
+  <rect x="72" y="112" width="368" height="288" rx="28" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+
+  <!-- two ruled label lines, the way a cassette insert reads -->
+  <rect x="104" y="150" width="200" height="12" rx="6" fill="#ffffff" fill-opacity="0.16"/>
+  <rect x="104" y="176" width="132" height="12" rx="6" fill="#ffffff" fill-opacity="0.09"/>
+
+  <!-- spool window -->
+  <rect x="104" y="216" width="304" height="150" rx="20" fill="url(#tape)" fill-opacity="0.14"/>
+
+  <!-- reels -->
+  <g fill="none" stroke="url(#tape)" stroke-width="14">
+    <circle cx="184" cy="291" r="46"/>
+    <circle cx="328" cy="291" r="46"/>
+  </g>
+  <circle cx="184" cy="291" r="15" fill="url(#tape)"/>
+  <circle cx="328" cy="291" r="15" fill="url(#tape)"/>
+
+  <!-- tape spanning the reels -->
+  <rect x="184" y="278" width="144" height="26" fill="url(#tape)" fill-opacity="0.55"/>
+
+  <!-- teeth on each hub -->
+  <g fill="#14161a">
+    <rect x="180" y="270" width="8" height="42" rx="4"/>
+    <rect x="163" y="287" width="42" height="8" rx="4"/>
+    <rect x="324" y="270" width="8" height="42" rx="4"/>
+    <rect x="307" y="287" width="42" height="8" rx="4"/>
+  </g>
+</svg>

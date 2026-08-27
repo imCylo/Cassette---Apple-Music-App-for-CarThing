@@ -7,3 +7,7 @@ dist
 # build output and local scratch
 *.zip
 shots/
+
+# published bundles are the download urls in catalog.json, so they have to be
+# committed — and their bytes have to stay exactly as hashed
+!releases/*.zip

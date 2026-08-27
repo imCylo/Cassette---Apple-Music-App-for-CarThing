@@ -10,7 +10,8 @@
     "push": "bun scripts/push.ts",
     "share": "bun scripts/share.ts",
     "update": "bunx @bridgething/updater",
-    "check-id": "bun scripts/check-id.ts"
+    "check-id": "bun scripts/check-id.ts",
+    "catalog": "bun scripts/catalog.ts"
   },
   "dependencies": {
     "@bridgething/client": "^0.11.0",

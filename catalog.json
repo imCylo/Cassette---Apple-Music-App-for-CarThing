@@ -1,0 +1,38 @@
+{
+  "schema": "catalog.v1",
+  "updated_at": "2026-08-27T03:08:57.251Z",
+  "repo": {
+    "name": "Cassette",
+    "description": "An Apple Music player for the Spotify Car Thing.",
+    "homepage": "https://github.com/imCylo/Cassette---Apple-Music-App-for-CarThing",
+    "icon": "https://raw.githubusercontent.com/imCylo/Cassette---Apple-Music-App-for-CarThing/main/docs/icon.png"
+  },
+  "apps": [
+    {
+      "id": "01a03aee-7989-76c4-b62c-edc89c2cee53",
+      "name": "Cassette",
+      "description": "Apple Music player with synced lyrics, playlist browsing and four radio presets",
+      "author": "imCylo",
+      "icon": "https://raw.githubusercontent.com/imCylo/Cassette---Apple-Music-App-for-CarThing/main/docs/icon.png",
+      "homepage": "https://github.com/imCylo/Cassette---Apple-Music-App-for-CarThing",
+      "source": "https://github.com/imCylo/Cassette---Apple-Music-App-for-CarThing",
+      "versions": [
+        {
+          "version": "0.8.0",
+          "released_at": "2026-08-27T03:06:49.242Z",
+          "download": {
+            "url": "https://raw.githubusercontent.com/imCylo/Cassette---Apple-Music-App-for-CarThing/main/releases/Cassette-0.8.0.zip",
+            "size": 632837,
+            "sha256": "2b2cbe74eb2fd3fff3b29dfaf4b2425938be6b846572d8d6e14bd227c8365c27"
+          },
+          "permissions": [
+            "net.fetch"
+          ],
+          "min_libbridgething_version": "0.11.0",
+          "changelog": "Browsing rebuilt at driving scale. Lyrics at 38px. Artwork no longer flickers between metadata updates, and catalog matches now require the album and the artist to agree so a wrong cover is never shown. Up next starts at the playing track. The alternative-media screen is a manual switch."
+        }
+      ]
+    }
+  ],
+  "recommended_sources": []
+}

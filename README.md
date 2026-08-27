@@ -43,6 +43,7 @@ bun install
 bun run dev        # http://localhost:5173
 bun run build      # production bundle into dist/
 bun run share      # Cassette-<version>.zip, installable from the companion app
+bun run check-id   # verify the webapp id has not drifted (build runs this too)
 bun run push       # build + install onto a Car Thing over USB
 ```
 
@@ -72,6 +73,17 @@ It can also reproduce the states that are hard to catch on real hardware:
 `scripts/shoot.ts` and `scripts/measure.ts` drive the app in a headless browser
 locked to the device's exact 800×480 and report overflow, clipped text and lyric
 centring. Worth running before shipping a layout change.
+
+### The webapp id
+
+`public/manifest.json`'s `id` is this app's identity — BridgeThing installs to
+`/var/bridgething/webapps/<id>/` and the companion matches updates against it.
+Changing it orphans every copy already installed.
+
+Nothing in the build touches it: vite copies `public/` into `dist/` verbatim, and
+`share.ts` and `push.ts` only read the manifest. `bun run check-id` asserts it
+anyway, and `bun run build` runs that first, so an accidental edit fails the build
+instead of shipping.
 
 ## Known BridgeThing limitations this works around
 

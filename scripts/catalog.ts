@@ -95,6 +95,12 @@ const catalog = {
       description: manifest.description,
       author: OWNER,
       icon: raw('docs/icon.png'),
+      /**
+       * Every capture is exactly 800x480 at 1:1 — the device's real panel, not a
+       * scaled render — and PNG, because raw.githubusercontent serves `.svg` as
+       * `text/plain` with `nosniff` and a browser will not draw it.
+       */
+      screenshots: ['docs/screens/01-player.png', 'docs/screens/02-lyrics.png', 'docs/screens/03-library.png'].map(raw),
       homepage,
       source: homepage,
       versions,

@@ -76,10 +76,12 @@ function useWheelScroll(ref: React.RefObject<HTMLDivElement | null>) {
     const el = ref.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (!e.deltaX) return;
+      // deltaX is the rotary wheel; deltaY is the same backstop the player uses.
+      const d = e.deltaX || e.deltaY;
+      if (!d) return;
       e.preventDefault();
       e.stopPropagation();
-      el.scrollTop += e.deltaX * 2.2;
+      el.scrollTop += d * 2.2;
     };
     el.addEventListener('wheel', onWheel, { passive: false, capture: true });
     return () => el.removeEventListener('wheel', onWheel, { capture: true } as EventListenerOptions);
@@ -512,6 +514,8 @@ export function InfoPanel({
   lyricsStatus,
   lyricsSource,
   source,
+  volume,
+  wheel,
   version,
   onBack,
 }: {
@@ -529,6 +533,12 @@ export function InfoPanel({
   lyricsStatus: string;
   lyricsSource: string | null;
   source: { kind: string; bundle: string | null; label: string };
+  volume: {
+    level: number;
+    muted: boolean;
+    diag: { changes: number; verb: string; error: string | null; authorized: boolean | null };
+  };
+  wheel: { count: number; lastX: number; lastY: number; at: number };
   version: string;
   onBack: () => void;
 }) {
@@ -557,6 +567,8 @@ export function InfoPanel({
     setElapsedTimeAvailable: state?.playback.setElapsedTimeAvailable ?? null,
     queueListAvail: state?.playback.queueListAvail ?? null,
     audibleSource: source,
+    volume: { level: volume.level, muted: volume.muted, ...volume.diag },
+    wheel,
   };
 
   return (
@@ -604,6 +616,50 @@ export function InfoPanel({
           value={state?.context?.uri ?? 'null — presets fall back to what you last started here'}
           warn={!state?.context?.uri}
         />
+        <Field
+          label="audible source"
+          value={`${source.kind}${source.bundle ? ` · ${source.bundle}` : ''} — ${source.label}`}
+          warn={source.kind === 'system'}
+        />
+
+        {/* Volume and the wheel, split apart deliberately: "the wheel sends
+            nothing" and "the wheel sends plenty and the phone ignores it" look
+            identical from the driver's seat and need opposite fixes. */}
+        <Field
+          label="wheel events"
+          value={
+            wheel.count === 0
+              ? '0 — no wheel events have reached the app at all'
+              : `${wheel.count} · last deltaX ${wheel.lastX} deltaY ${wheel.lastY}`
+          }
+          warn={wheel.count === 0}
+        />
+        <Field label="volume level" value={`${Math.round(volume.level * 100)}%${volume.muted ? ' · muted' : ''}`} />
+        <Field
+          label="volume verb"
+          value={volume.diag.verb === 'relative' ? 'volumeUp / volumeDown' : 'setVolume (absolute)'}
+        />
+        <Field
+          label="volume authority"
+          value={
+            volume.diag.authorized === null
+              ? 'not reported'
+              : volume.diag.authorized
+                ? 'granted by the companion'
+                : 'NOT granted — the phone will ignore volume commands'
+          }
+          warn={volume.diag.authorized === false}
+        />
+        <Field
+          label="volume replies"
+          value={
+            volume.diag.changes === 0
+              ? '0 — the daemon has never reported a volume change'
+              : String(volume.diag.changes)
+          }
+          warn={volume.diag.changes === 0}
+        />
+        {volume.diag.error && <Field label="audio error" value={volume.diag.error} warn />}
 
         <div className="mt-4 flex gap-2.5">
           <BigButton onPress={art.retry} wide>

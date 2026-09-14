@@ -136,9 +136,24 @@ export function useArtwork(client: BridgethingClient, track: ArtTrack | null) {
   const album = track?.album ?? null;
   const title = track?.title ?? null;
   const shownFor = useRef<string | null>(null);
+  /** The best tier we have actually rendered for `shownFor`. */
+  const bestTier = useRef<ArtTier>(null);
   // Stable identity for the song, not for every attribute that trickles in.
   const identity = track?.persistentId ?? track?.uri ?? `${artist ?? ''}|${title ?? ''}`;
-  const key = `${identity}|${artworkId ?? ''}`;
+  /**
+   * The metadata belongs in the key, and this is the fix for the commonest
+   * "artwork just never appears" case.
+   *
+   * iAP2 delivers a track one attribute at a time: identity and artwork id land
+   * first, artist and album a beat later. The catalog tier — the only one that
+   * works when the gateway lane misses — needs the artist, so on that first pass
+   * it cannot run at all. Keying only on identity meant the effect never ran
+   * again once the artist did arrive, and the six-step retry ladder spun through
+   * its whole schedule with nothing to look up. Keying on the metadata gives
+   * every late attribute a fresh attempt; `songChanged` below still decides
+   * whether the screen blanks, so this re-runs without a flicker.
+   */
+  const key = `${identity}|${artworkId ?? ''}|${artist ?? ''}|${album ?? ''}|${title ?? ''}`;
 
   useEffect(() => {
     if (!artworkId && !artist && !title) {
@@ -146,8 +161,13 @@ export function useArtwork(client: BridgethingClient, track: ArtTrack | null) {
       setState('idle');
       setAttempts(0);
       setTier(null);
+      bestTier.current = null;
       return;
     }
+
+    // Already showing the real thing for this song — a late album name is not a
+    // reason to go back and ask again.
+    if (shownFor.current === identity && bestTier.current === 'gateway') return;
 
     let dead = false;
     let blobUrl: string | null = null;
@@ -160,6 +180,7 @@ export function useArtwork(client: BridgethingClient, track: ArtTrack | null) {
     if (songChanged) {
       setUrl(null);
       setTier(null);
+      bestTier.current = null;
       shownFor.current = identity;
     }
     setState(songChanged ? 'waiting' : 'ready');
@@ -173,6 +194,7 @@ export function useArtwork(client: BridgethingClient, track: ArtTrack | null) {
       setUrl(blobUrl);
       setState('ready');
       setTier(from);
+      bestTier.current = from;
       return true;
     };
 
@@ -368,12 +390,39 @@ export function useLyrics(client: BridgethingClient, state: PlayerState | null) 
     setStatus('loading');
 
     (async () => {
+      /**
+       * lrclib, over the phone's net lane. This is a real second source, not a
+       * consolation prize: it does not care what the gateway supports, and on
+       * Apple Music it is usually the one that answers. So it runs whenever the
+       * daemon comes up empty — including when the daemon says it has no lyrics
+       * surface at all, which used to return here and leave the view dead.
+       */
+      const tryFallback = async (): Promise<boolean> => {
+        const artist = track?.artist ?? '';
+        const title = track?.title ?? '';
+        if (!artist || !title) return false;
+        setStatus('loading');
+        try {
+          const fuzzy = await fallbackLyrics(client, artist, title, track?.durationMs ?? null);
+          if (dead || !fuzzy) return false;
+          if (fuzzy.synced?.length || fuzzy.plain) {
+            setLyrics(fuzzy);
+            setStatus('ready');
+            return true;
+          }
+        } catch {
+          /* the phone may have no route out; the caller settles the status */
+        }
+        return false;
+      };
+
       const res = await client.lyrics.get();
       if (dead) return;
 
       if (!res.ok) {
-        if (res.kind === 'domain' && res.error?.error?.type === 'notSupported') setStatus('unsupported');
-        else setStatus('none');
+        const unsupported = res.kind === 'domain' && res.error?.error?.type === 'notSupported';
+        if (await tryFallback()) return;
+        if (!dead) setStatus(unsupported ? 'unsupported' : 'none');
         return;
       }
 
@@ -390,27 +439,7 @@ export function useLyrics(client: BridgethingClient, state: PlayerState | null) 
         return;
       }
 
-      // Daemon came up empty. Try lrclib's fuzzy endpoint ourselves before
-      // telling the user there are no lyrics — it catches remasters and
-      // "(feat. …)" titles that the strict lookup misses.
-      const artist = track?.artist ?? '';
-      const title = track?.title ?? '';
-      if (!artist || !title) {
-        setStatus('none');
-        return;
-      }
-      setStatus('loading');
-      try {
-        const fuzzy = await fallbackLyrics(client, artist, title, track?.durationMs ?? null);
-        if (dead) return;
-        if (fuzzy && (fuzzy.synced?.length || fuzzy.plain)) {
-          setLyrics(fuzzy);
-          setStatus('ready');
-          return;
-        }
-      } catch {
-        /* the phone may have no route out; fall through to 'none' */
-      }
+      if (await tryFallback()) return;
       if (!dead) setStatus('none');
     })();
 
@@ -422,32 +451,100 @@ export function useLyrics(client: BridgethingClient, state: PlayerState | null) 
   return { lyrics, status };
 }
 
-export function useVolume(client: BridgethingClient) {
+export type VolumeDiag = {
+  /** How many `VolumeChanged` events have ever arrived. Zero means nothing is listening at the other end. */
+  changes: number;
+  /** Which verb we are sending: the daemon's own step, or an absolute level. */
+  verb: 'relative' | 'absolute';
+  /** Last error the audio surface reported, if any. */
+  error: string | null;
+  /** Whether the companion granted this webapp volume authority. */
+  authorized: boolean | null;
+};
+
+/**
+ * Volume, as a rotary encoder actually wants it.
+ *
+ * This used to send `setVolume` with an absolute level built from a locally
+ * tracked number that started at 0.5 and was only ever corrected by a
+ * `VolumeChanged` that may never come. Two ways that fails silently: the
+ * companion has not granted the `volume` authority scope, so the absolute set is
+ * dropped on the floor; or it is granted, the level is honoured, and it snaps
+ * from wherever the phone really was to 0.54.
+ *
+ * `volumeUp`/`volumeDown` are the right verbs for a detented wheel — the daemon
+ * owns the step size and the current level, so there is nothing for us to get
+ * wrong. We still keep a local level for the HUD, and fall back to absolute if
+ * the relative verbs turn out to go nowhere.
+ */
+export function useVolume(client: BridgethingClient, authorized: boolean | null = null) {
   const [level, setLevel] = useState(0.5);
   const [muted, setMuted] = useState(false);
   const [bumped, setBumped] = useState(0);
+  const [changes, setChanges] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [verb, setVerb] = useState<'relative' | 'absolute'>('relative');
+
+  const levelRef = useRef(0.5);
+  const heard = useRef(false);
 
   useEffect(
     () =>
       client.audio.onVolumeChanged(v => {
+        heard.current = true;
+        levelRef.current = v.level;
         setLevel(v.level);
         setMuted(v.muted);
+        setChanges(n => n + 1);
         setBumped(Date.now());
+      }),
+    [client],
+  );
+
+  // The audio surface reports rejections as events, not as failed calls — every
+  // one of these commands is fire-and-forget. Without this subscription a
+  // refused volume change is indistinguishable from a wheel that is not moving.
+  useEffect(
+    () =>
+      client.audio.onErrorEvent(reply => {
+        const e: any = reply.error;
+        setError(
+          e?.type === 'unavailable'
+            ? `unavailable: ${e.data?.verb ?? '?'}`
+            : e?.type === 'actionRejected'
+              ? `rejected: ${e.data?.reason ?? '?'}`
+              : (e?.type ?? 'unknown'),
+        );
       }),
     [client],
   );
 
   const nudge = useCallback(
     (delta: number) => {
-      const next = Math.min(1, Math.max(0, level + delta));
+      const up = delta > 0;
+      const next = Math.min(1, Math.max(0, levelRef.current + delta));
+
+      if (verb === 'relative') {
+        void (up ? client.audio.volumeUp() : client.audio.volumeDown());
+        // If a relative step never produces a VolumeChanged, the daemon is not
+        // acting on it — switch to absolute and let that fail loudly instead.
+        window.setTimeout(() => {
+          if (!heard.current) setVerb('absolute');
+        }, 900);
+      } else {
+        void client.audio.setVolume({ level: next });
+      }
+
+      // Optimistic, so the HUD tracks the wheel even before the daemon answers.
+      levelRef.current = next;
       setLevel(next);
       setBumped(Date.now());
-      client.audio.setVolume({ level: next });
     },
-    [client, level],
+    [client, verb],
   );
 
-  return { level, muted, bumped, nudge };
+  const diag: VolumeDiag = { changes, verb, error, authorized };
+  return { level, muted, bumped, nudge, diag };
 }
 
 /** Installed apps, for the drawer. Launcher-role bundles are excluded by the daemon. */

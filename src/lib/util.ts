@@ -143,6 +143,9 @@ function prettifyBundle(bundle: string): string {
     .replace(/\b\w/g, c => c.toUpperCase());
 }
 
+/** Apple's own Music app, however the phone spells it. */
+const APPLE_MUSIC_BUNDLES = new Set(['com.apple.music', 'com.apple.musicd', 'com.apple.ituneradio']);
+
 /**
  * Which app is actually making sound.
  *
@@ -151,15 +154,31 @@ function prettifyBundle(bundle: string): string {
  * plays. But the system-media provider builds its uris as `system:<bundle>:<hash>`
  * and its art ids as `system-art:<token>`, so the now-playing item names its own
  * owner.
+ *
+ * Two traps, both of which cost us a working screen:
+ *
+ *  - Apple Music itself arrives through the system-media session on plenty of
+ *    phones — `system:com.apple.Music:…`. It is still Apple Music. Calling it
+ *    foreign pinned the view to artwork, hid the lyrics button and stripped
+ *    shuffle, repeat and like.
+ *  - A bare `system-art:` id with no uri names no owner at all. The old code
+ *    read that as "some other app"; it is really "we do not know", and the rule
+ *    here has always been that a wrong guess must not remove working buttons.
  */
 export function sourceOf(uri: string | null | undefined, artworkId: string | null | undefined): Source {
-  if (uri?.startsWith('system:') || artworkId?.startsWith('system-art:')) {
-    const bundle = uri?.startsWith('system:') ? (uri.split(':')[1] ?? null) : null;
-    const label = bundle ? (BUNDLE_NAMES[bundle] ?? prettifyBundle(bundle)) : 'your phone';
-    return { kind: 'system', bundle, label };
+  if (uri?.startsWith('system:')) {
+    const bundle = uri.split(':')[1] ?? null;
+    if (bundle && APPLE_MUSIC_BUNDLES.has(bundle.toLowerCase())) {
+      return { kind: 'appleMusic', bundle, label: 'Apple Music' };
+    }
+    if (bundle) {
+      return { kind: 'system', bundle, label: BUNDLE_NAMES[bundle] ?? prettifyBundle(bundle) };
+    }
+    return { kind: 'unknown', bundle: null, label: 'your phone' };
   }
   if (uri?.startsWith('am:') || artworkId?.startsWith('applemusic/img/')) {
     return { kind: 'appleMusic', bundle: null, label: 'Apple Music' };
   }
+  // An art id alone never identifies an owner — do not strip the UI over it.
   return { kind: 'unknown', bundle: null, label: 'your phone' };
 }

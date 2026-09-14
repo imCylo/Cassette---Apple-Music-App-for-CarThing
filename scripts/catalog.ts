@@ -37,6 +37,14 @@ const homepage = `https://github.com/${OWNER}/${REPO}`;
 
 /** Release notes per version. Newest first; the catalog is emitted that way. */
 const CHANGELOG: Record<string, string> = {
+  '0.9.0':
+    'Apple Music reaching the phone through its system-media session is no longer ' +
+    'mistaken for another app, which had pinned the screen to artwork and hidden ' +
+    'shuffle, repeat, like and lyrics. Lyrics no longer depend on the gateway ' +
+    'advertising a lyrics surface — the lrclib lookup runs either way. The wheel ' +
+    'sends the relative volume verbs instead of an absolute level the phone may ' +
+    'refuse. Artwork gets a fresh lookup when the artist arrives after the track. ' +
+    'Diagnostics reports the audible source, the wheel and the volume path.',
   '0.8.0':
     'Browsing rebuilt at driving scale. Lyrics at 38px. Artwork no longer flickers ' +
     'between metadata updates, and catalog matches now require the album and the ' +

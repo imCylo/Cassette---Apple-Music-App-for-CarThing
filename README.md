@@ -45,7 +45,7 @@ https://raw.githubusercontent.com/imCylo/Cassette---Apple-Music-App-for-CarThing
 Updates then show up on their own.
 
 **By hand.** Download
-[`releases/Cassette-0.8.0.zip`](releases/Cassette-0.8.0.zip) and install it from
+[`releases/Cassette-0.9.0.zip`](releases/Cassette-0.9.0.zip) and install it from
 the companion app.
 
 ## Build it yourself

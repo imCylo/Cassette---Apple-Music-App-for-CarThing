@@ -43,6 +43,15 @@ const AM_BROKEN_ART = args.has('--am-broken-art');
 const YOUTUBE = args.has('--youtube');
 /** iap2 art id that never arrives — tiers 1 and 2 both dead, catalog must win. */
 const STARVED = args.has('--starved');
+/** The companion never granted `volume`, so every volume command is dropped. */
+const NO_VOLUME_AUTH = args.has('--no-volume');
+/**
+ * Apple Music arriving through the phone's *system-media* session rather than
+ * the library provider — `system:com.apple.Music:…`, `system-art:…`, no
+ * context, and a gateway that reports no lyrics surface. This is the shape that
+ * made Cassette treat its own music as a foreign app and go read-only.
+ */
+const AM_SYSTEM = args.has('--am-system');
 /** After a few seconds, a video takes the audio: duration changes, title does not. */
 const TAKEOVER = args.has('--takeover');
 let takenOver = false;
@@ -190,6 +199,13 @@ function positionMs(): number {
   return (Date.now() - START) % DURATION_MS;
 }
 
+const AM_SYSTEM_TRACK = {
+  ...TRACK,
+  uri: 'system:com.apple.Music:2b7f10',
+  persistentId: 'system:com.apple.Music:2b7f10',
+  artworkId: 'system-art:am-2b7f10',
+};
+
 const YT_TRACK = {
   ...TRACK,
   uri: 'system:com.google.ios.youtube:8f31a2',
@@ -205,7 +221,7 @@ const YT_TRACK = {
 function playerState() {
   // The takeover case: the daemon keeps reporting the song's title and artist
   // while the length (and the playhead) belong to a video.
-  const base = EMPTY ? null : YOUTUBE ? YT_TRACK : TRACK;
+  const base = EMPTY ? null : YOUTUBE ? YT_TRACK : AM_SYSTEM ? AM_SYSTEM_TRACK : TRACK;
   const track = base && takenOver ? { ...base, durationMs: 402_000 } : base;
   return {
     track,
@@ -225,7 +241,8 @@ function playerState() {
     },
     queue: [],
     options: { speed: 1, crossfadeMs: null },
-    context: EMPTY || IAP2 || YOUTUBE ? null : { uri: 'am:playlist:p.driving', name: 'Late Night Drive' },
+    context:
+      EMPTY || IAP2 || YOUTUBE || AM_SYSTEM ? null : { uri: 'am:playlist:p.driving', name: 'Late Night Drive' },
     target: null,
   };
 }
@@ -238,10 +255,12 @@ const CAPS = {
     netFetch: true,
     netWs: true,
     audioTts: true,
-    lyrics: !NO_LYRICS,
+    lyrics: !NO_LYRICS && !AM_SYSTEM,
     playbackTargets: false,
   },
-  authority: ['nowPlayingMetadata', 'nowPlayingPlayback', 'volume'],
+  authority: NO_VOLUME_AUTH
+    ? ['nowPlayingMetadata', 'nowPlayingPlayback']
+    : ['nowPlayingMetadata', 'nowPlayingPlayback', 'volume'],
   uriSchemes: ['am'],
   network: { reachable: true, kind: 'phone' },
   audio: { earcons: [], ttsVoices: [] },
@@ -312,8 +331,9 @@ const server = Bun.serve({
       const event = msg?.data?.data?.event;
       const body = msg?.data?.data?.data;
       console.log(`[mockd] <- ${type}.${event}`);
+      const method = `${type}.${event}`;
 
-      switch (`${type}.${event}`) {
+      switch (method) {
         case 'player.stateGet':
           return rid && ws.send(rsp(rid, 'player', 'stateReply', { state: playerState() }));
         case 'player.pause':
@@ -540,7 +560,23 @@ const server = Bun.serve({
           return rid && ws.send(rsp(rid, 'webapp', 'activeReply', { id: body?.id ?? null, name: null }));
 
         case 'audio.setVolume':
+          if (NO_VOLUME_AUTH) return;
           volume = body.level;
+          return ws.send(evt('audio', 'volumeChanged', { level: volume, muted: false }));
+
+        // The rotary wheel's real verbs. The mock used to answer only the
+        // absolute set, so the relative path went untested — which is exactly
+        // the path the device takes.
+        case 'audio.volumeUp':
+        case 'audio.volumeDown':
+          if (NO_VOLUME_AUTH) {
+            return ws.send(
+              evt('audio', 'errorEvent', {
+                error: { type: 'unavailable', data: { verb: method.split('.')[1] } },
+              }),
+            );
+          }
+          volume = Math.min(1, Math.max(0, volume + (method === 'audio.volumeUp' ? 0.05 : -0.05)));
           return ws.send(evt('audio', 'volumeChanged', { level: volume, muted: false }));
 
         case 'library.favoritesToggle':

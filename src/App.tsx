@@ -36,7 +36,7 @@ import { ambientCss, ambientFrom, ambientGlow, sourceOf } from './lib/util';
 type View = 'art' | 'split';
 const CYCLE: View[] = ['art', 'split'];
 const HOLD_MS = 700;
-const VERSION = '0.8.0';
+const VERSION = '0.9.0';
 
 export default function App() {
   const client = useClient();
@@ -45,7 +45,8 @@ export default function App() {
   const caps = useCapabilities(client);
   const posMs = usePlayhead(state);
   const { lyrics, status: lyricsStatus } = useLyrics(client, state);
-  const { level, muted, bumped, nudge } = useVolume(client);
+  const volumeAuthorized = caps ? caps.authority.includes('volume') : null;
+  const { level, muted, bumped, nudge, diag: volumeDiag } = useVolume(client, volumeAuthorized);
   const { presets, assign, lastPlayed, rememberPlayed } = usePresets(client);
 
   const [view, setView] = useState<View>('art');
@@ -82,7 +83,17 @@ export default function App() {
   // Only hide controls when we are certain; a wrong guess strips working buttons.
   const foreign = source.kind === 'system';
   const repeat = state?.playback.repeat ?? 'off';
-  const lyricsAvailable = caps?.available.lyrics !== false;
+  /**
+   * Whether there is a lyrics view worth opening.
+   *
+   * This used to read `caps.available.lyrics`, and that is what killed the
+   * button: the flag describes the *gateway's* lyrics surface, which Apple Music
+   * does not provide, while `useLyrics` answers from lrclib over the phone's net
+   * lane regardless. The capability was false, the lyrics were right there, and
+   * Mode did nothing. So gate on the actual fetch instead — available until the
+   * lookup has come back empty for this track.
+   */
+  const lyricsAvailable = lyricsStatus !== 'none' && lyricsStatus !== 'unsupported';
 
   /* -------------------------------------------------- alternative media */
 
@@ -135,14 +146,23 @@ export default function App() {
     [lyricsAvailable, foreign],
   );
 
+  // A dead button is a bug report waiting to happen. When Mode has nowhere to
+  // go, say so on screen rather than swallowing the press.
   const cycleView = useCallback(() => {
+    if (cycle.length < 2) {
+      flash(foreign ? `${source.label} is playing — no lyrics` : 'No lyrics for this track');
+      return;
+    }
     setView(v => cycle[(Math.max(0, cycle.indexOf(v)) + 1) % cycle.length]);
-  }, [cycle]);
+  }, [cycle, flash, foreign, source.label]);
 
   const toggleLyrics = useCallback(() => {
-    if (!lyricsAvailable) return;
+    if (!lyricsAvailable) {
+      flash('No lyrics for this track');
+      return;
+    }
     setView(v => (v === 'art' ? 'split' : 'art'));
-  }, [lyricsAvailable]);
+  }, [flash, lyricsAvailable]);
 
   // A provider that loses lyrics mid-session must not strand us on a dead view.
   useEffect(() => {
@@ -255,6 +275,8 @@ export default function App() {
 
   const holdTimer = useRef<number | null>(null);
   const heldFired = useRef(false);
+  /** Raw wheel traffic, so Diagnostics can tell "no events" from "events ignored". */
+  const wheelLog = useRef({ count: 0, lastX: 0, lastY: 0, at: 0 });
 
   useEffect(() => {
     const clearHold = () => {
@@ -302,11 +324,20 @@ export default function App() {
       heldFired.current = false;
     };
 
-    // The rotary wheel arrives as horizontal scroll.
+    // The rotary wheel arrives as horizontal scroll. deltaY is a backstop: a
+    // firmware that ever maps the encoder to vertical scroll would otherwise
+    // leave the wheel doing nothing at all, with no way to tell from the app.
     const onWheel = (e: WheelEvent) => {
-      if (!e.deltaX) return;
+      const d = e.deltaX || e.deltaY;
+      wheelLog.current = {
+        count: wheelLog.current.count + 1,
+        lastX: e.deltaX,
+        lastY: e.deltaY,
+        at: Date.now(),
+      };
+      if (!d) return;
       e.preventDefault();
-      nudge(e.deltaX > 0 ? 0.04 : -0.04);
+      nudge(d > 0 ? 0.04 : -0.04);
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -367,6 +398,8 @@ export default function App() {
               lyricsStatus={lyricsStatus}
               lyricsSource={lyrics?.source ?? null}
               source={source}
+              volume={{ level, muted, diag: volumeDiag }}
+              wheel={wheelLog.current}
               version={VERSION}
               onBack={() => setShowInfo(false)}
             />
@@ -487,7 +520,7 @@ export default function App() {
   const lyricsPane = (
     <LyricsPane
       lyrics={lyrics}
-      status={lyricsAvailable ? lyricsStatus : 'unsupported'}
+      status={lyricsStatus}
       posMs={posMs}
       glow={glow}
       scale="split"
@@ -529,7 +562,9 @@ export default function App() {
           setDrawer(true);
         }}
       />
-      {lyricsAvailable && !foreign && (
+      {/* Always present, so the row never reflows and the control never just
+          vanishes; pressing it when there is nothing to show says so. */}
+      {!foreign && (
         <IconButton
           name="lyrics"
           label={view === 'split' ? 'Hide lyrics' : 'Show lyrics'}
